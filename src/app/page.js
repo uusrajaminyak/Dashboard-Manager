@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// Klien Supabase publik untuk mengambil data profil (Aman di frontend)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -14,11 +13,13 @@ export default function DasborManajer() {
   const [role, setRole] = useState("driver");
   const [loading, setLoading] = useState(false);
 
-  // State untuk Daftar Karyawan
   const [karyawan, setKaryawan] = useState([]);
   const [memuatData, setMemuatData] = useState(true);
 
-  // Fungsi mengambil data karyawan dari tabel profiles
+  // --- STATE BARU UNTUK FITUR PENCARIAN & FILTER ---
+  const [kataKunci, setKataKunci] = useState("");
+  const [filterPosisi, setFilterPosisi] = useState("semua");
+
   const ambilDataKaryawan = async () => {
     setMemuatData(true);
     const { data, error } = await supabase
@@ -77,7 +78,6 @@ export default function DasborManajer() {
     const konfirmasi = window.confirm(
       `PERINGATAN!\n\nApakah Anda yakin ingin menghapus akun "${namaKaryawan}" secara permanen?`,
     );
-
     if (!konfirmasi) return;
 
     try {
@@ -91,7 +91,7 @@ export default function DasborManajer() {
 
       if (data.success) {
         alert(`Akun ${namaKaryawan} berhasil dihapus.`);
-        ambilDataKaryawan(); 
+        ambilDataKaryawan();
       } else {
         alert(`Gagal menghapus: ${data.error}`);
       }
@@ -100,8 +100,17 @@ export default function DasborManajer() {
     }
   };
 
+  // --- LOGIKA FILTERING ---
+  const karyawanDifilter = karyawan.filter((k) => {
+    const cocokNama = k.nama_lengkap
+      .toLowerCase()
+      .includes(kataKunci.toLowerCase());
+    const cocokPosisi = filterPosisi === "semua" || k.role === filterPosisi;
+    return cocokNama && cocokPosisi;
+  });
+
   return (
-    <div className="min-h-screen bg-slate-100 p-8">
+    <div className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="md:col-span-1 bg-white rounded-xl shadow-lg overflow-hidden h-fit">
           <div className="bg-blue-600 p-6 text-center">
@@ -110,7 +119,7 @@ export default function DasborManajer() {
           <form onSubmit={handleDaftar} className="p-6 space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">
-                Nama
+                Nama 
               </label>
               <input
                 type="text"
@@ -155,8 +164,8 @@ export default function DasborManajer() {
           </form>
         </div>
 
-        <div className="md:col-span-2 bg-white rounded-xl shadow-lg overflow-hidden">
-          <div className="bg-slate-800 p-6 flex justify-between items-center">
+        <div className="md:col-span-2 bg-white rounded-xl shadow-lg overflow-hidden flex flex-col h-[85vh]">
+          <div className="bg-slate-800 p-6 flex justify-between items-center shrink-0">
             <h1 className="text-xl font-bold text-white">Data Karyawan</h1>
             <button
               onClick={ambilDataKaryawan}
@@ -165,19 +174,41 @@ export default function DasborManajer() {
               Muat Ulang
             </button>
           </div>
-          <div className="p-0 overflow-x-auto">
+
+          <div className="p-4 bg-slate-50 border-b flex flex-col sm:flex-row gap-3 shrink-0">
+            <input
+              type="text"
+              placeholder="Cari nama karyawan..."
+              value={kataKunci}
+              onChange={(e) => setKataKunci(e.target.value)}
+              className="flex-1 border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <select
+              value={filterPosisi}
+              onChange={(e) => setFilterPosisi(e.target.value)}
+              className="border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none sm:w-40"
+            >
+              <option value="semua">Semua</option>
+              <option value="driver">Driver</option>
+              <option value="kerani">Kerani</option>
+            </select>
+          </div>
+
+          <div className="p-0 overflow-y-auto flex-1">
             {memuatData ? (
               <p className="p-6 text-center text-slate-500">
                 Menarik data dari server...
               </p>
-            ) : karyawan.length === 0 ? (
-              <p className="p-6 text-center text-slate-500">
-                Belum ada karyawan terdaftar.
+            ) : karyawanDifilter.length === 0 ? (
+              <p className="p-6 text-center text-slate-500 font-medium">
+                {karyawan.length === 0
+                  ? "Belum ada karyawan terdaftar."
+                  : "Karyawan tidak ditemukan."}
               </p>
             ) : (
               <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 border-b">
+                <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
+                  <tr className="text-slate-500 border-b">
                     <th className="p-4 font-semibold text-sm">Nama Pengguna</th>
                     <th className="p-4 font-semibold text-sm">Posisi</th>
                     <th className="p-4 font-semibold text-sm text-right">
@@ -186,7 +217,8 @@ export default function DasborManajer() {
                   </tr>
                 </thead>
                 <tbody>
-                  {karyawan.map((k) => (
+
+                  {karyawanDifilter.map((k) => (
                     <tr key={k.id} className="border-b hover:bg-slate-50">
                       <td className="p-4 font-medium text-slate-800">
                         {k.nama_lengkap}
