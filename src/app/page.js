@@ -8,15 +8,28 @@ const supabase = createClient(
 );
 
 export default function DasborManajer() {
-  const [nama, setNama] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState("driver");
-  const [loading, setLoading] = useState(false);
-
   const [karyawan, setKaryawan] = useState([]);
   const [memuatData, setMemuatData] = useState(true);
 
-  // --- STATE BARU UNTUK FITUR PENCARIAN & FILTER ---
+  // --- STATE TAB KIRI ---
+  const [tabAktif, setTabAktif] = useState("akun");
+
+  // --- STATE FORM TAMBAH AKUN ---
+  const [nama, setNama] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("driver");
+  const [loadingAkun, setLoadingAkun] = useState(false);
+
+  // --- STATE FORM INPUT MANUAL ---
+  const [manualDriver, setManualDriver] = useState("");
+  const [manualKerani, setManualKerani] = useState("");
+  const [manualTanggal, setManualTanggal] = useState("");
+  const [manualAfdeling, setManualAfdeling] = useState("");
+  const [manualBlok, setManualBlok] = useState("");
+  const [manualTonase, setManualTonase] = useState("");
+  const [loadingManual, setLoadingManual] = useState(false);
+
+  // --- STATE FILTER & PENCARIAN ---
   const [kataKunci, setKataKunci] = useState("");
   const [filterPosisi, setFilterPosisi] = useState("semua");
 
@@ -38,9 +51,10 @@ export default function DasborManajer() {
     ambilDataKaryawan();
   }, []);
 
+  // --- HANDLER TAMBAH AKUN ---
   const handleDaftar = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setLoadingAkun(true);
 
     const emailAman = nama.toLowerCase().replace(/[^a-z0-9]/g, "");
     const generatedEmail = `${emailAman}@kebun.com`;
@@ -70,10 +84,11 @@ export default function DasborManajer() {
     } catch (err) {
       alert("Gagal terhubung ke server.");
     } finally {
-      setLoading(false);
+      setLoadingAkun(false);
     }
   };
 
+  // --- HANDLER HAPUS AKUN ---
   const handleHapus = async (id, namaKaryawan) => {
     const konfirmasi = window.confirm(
       `PERINGATAN!\n\nApakah Anda yakin ingin menghapus akun "${namaKaryawan}" secara permanen?`,
@@ -100,6 +115,46 @@ export default function DasborManajer() {
     }
   };
 
+  // --- HANDLER INPUT MANUAL RITASE ---
+  const handleInputManual = async (e) => {
+    e.preventDefault();
+    if (!manualDriver || !manualKerani || !manualTanggal) {
+      alert("Harap pilih Supir, Kerani, dan Tanggal terlebih dahulu!");
+      return;
+    }
+
+    setLoadingManual(true);
+    try {
+      const res = await fetch("/api/manual-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driver_id: manualDriver,
+          kerani_id: manualKerani,
+          tanggal: manualTanggal,
+          afdeling: manualAfdeling.toUpperCase(),
+          blok: manualBlok.toUpperCase(),
+          tonase: parseFloat(manualTonase.replace(",", ".")),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        alert("Data ritase susulan berhasil disinkronisasi ke sistem!");
+        setManualAfdeling("");
+        setManualBlok("");
+        setManualTonase("");
+      } else {
+        alert(`Gagal menyimpan data: ${data.error}`);
+      }
+    } catch (err) {
+      alert("Gagal terhubung ke server.");
+    } finally {
+      setLoadingManual(false);
+    }
+  };
+
   // --- LOGIKA FILTERING ---
   const karyawanDifilter = karyawan.filter((k) => {
     const cocokNama = k.nama_lengkap
@@ -109,61 +164,195 @@ export default function DasborManajer() {
     return cocokNama && cocokPosisi;
   });
 
+  // Pisahkan array untuk opsi dropdown Input Manual
+  const daftarDriver = karyawan.filter((k) => k.role === "driver");
+  const daftarKerani = karyawan.filter((k) => k.role === "kerani");
+
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* KOLOM KIRI: MULTI-TAB (TAMBAH AKUN / INPUT MANUAL) */}
         <div className="md:col-span-1 bg-white rounded-xl shadow-lg overflow-hidden h-fit">
-          <div className="bg-blue-600 p-6 text-center">
-            <h1 className="text-xl font-bold text-white">Tambah Karyawan</h1>
-          </div>
-          <form onSubmit={handleDaftar} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">
-                Nama 
-              </label>
-              <input
-                type="text"
-                required
-                value={nama}
-                onChange={(e) => setNama(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">
-                Kata Sandi
-              </label>
-              <input
-                type="text"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">
-                Posisi
-              </label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="driver">Driver</option>
-                <option value="kerani">Kerani</option>
-              </select>
-            </div>
+          <div className="flex border-b border-slate-200">
             <button
-              type="submit"
-              disabled={loading}
-              className={`w-full font-bold py-3 rounded-lg text-white ${loading ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-700"}`}
+              onClick={() => setTabAktif("akun")}
+              className={`flex-1 py-3 font-bold text-sm transition-colors ${tabAktif === "akun" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
             >
-              {loading ? "Memproses..." : "Daftarkan"}
+              Kelola Akun
             </button>
-          </form>
+            <button
+              onClick={() => setTabAktif("manual")}
+              className={`flex-1 py-3 font-bold text-sm transition-colors ${tabAktif === "manual" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+            >
+              Input Susulan
+            </button>
+          </div>
+
+          {/* KONTEN TAB: TAMBAH AKUN */}
+          {tabAktif === "akun" && (
+            <form onSubmit={handleDaftar} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  Nama
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={nama}
+                  onChange={(e) => setNama(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  Kata Sandi
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  Posisi
+                </label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="driver">Driver</option>
+                  <option value="kerani">Kerani</option>
+                </select>
+              </div>
+              <button
+                type="submit"
+                disabled={loadingAkun}
+                className={`w-full font-bold py-3 rounded-lg text-white ${loadingAkun ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-700"}`}
+              >
+                {loadingAkun ? "Memproses..." : "Daftarkan"}
+              </button>
+            </form>
+          )}
+
+          {/* KONTEN TAB: INPUT MANUAL RITASE */}
+          {tabAktif === "manual" && (
+            <form onSubmit={handleInputManual} className="p-6 space-y-4">
+              <div className="bg-amber-50 text-amber-800 text-xs p-3 rounded-lg mb-2 border border-amber-200">
+                Gunakan form ini <b>hanya</b> untuk mendaftarkan ritase yang
+                terlewat karena masalah aplikasi/HP di lapangan.
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  Nama Supir
+                </label>
+                <select
+                  required
+                  value={manualDriver}
+                  onChange={(e) => setManualDriver(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                >
+                  <option value="">Pilih Supir</option>
+                  {daftarDriver.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.nama_lengkap}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  Nama Kerani
+                </label>
+                <select
+                  required
+                  value={manualKerani}
+                  onChange={(e) => setManualKerani(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                >
+                  <option value="">Pilih Kerani</option>
+                  {daftarKerani.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.nama_lengkap}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  Tanggal Ritase
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={manualTanggal}
+                  onChange={(e) => setManualTanggal(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Afdeling
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: OA"
+                    value={manualAfdeling}
+                    onChange={(e) => setManualAfdeling(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Blok
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: 12"
+                    value={manualBlok}
+                    onChange={(e) => setManualBlok(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  Tonase Aktual (Ton)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="Contoh: 5.5"
+                  value={manualTonase}
+                  onChange={(e) => setManualTonase(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loadingManual}
+                className={`w-full font-bold py-3 rounded-lg text-white mt-2 ${loadingManual ? "bg-slate-400" : "bg-emerald-600 hover:bg-emerald-700"}`}
+              >
+                {loadingManual ? "Menyimpan..." : "Simpan Data Susulan"}
+              </button>
+            </form>
+          )}
         </div>
 
+        {/* KOLOM KANAN: DATA KARYAWAN (TIDAK ADA PERUBAHAN) */}
         <div className="md:col-span-2 bg-white rounded-xl shadow-lg overflow-hidden flex flex-col h-[85vh]">
           <div className="bg-slate-800 p-6 flex justify-between items-center shrink-0">
             <h1 className="text-xl font-bold text-white">Data Karyawan</h1>
@@ -217,7 +406,6 @@ export default function DasborManajer() {
                   </tr>
                 </thead>
                 <tbody>
-
                   {karyawanDifilter.map((k) => (
                     <tr key={k.id} className="border-b hover:bg-slate-50">
                       <td className="p-4 font-medium text-slate-800">
