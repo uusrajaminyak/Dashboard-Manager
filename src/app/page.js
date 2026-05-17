@@ -11,16 +11,16 @@ export default function DasborManajer() {
   const [karyawan, setKaryawan] = useState([]);
   const [memuatData, setMemuatData] = useState(true);
 
-  // --- STATE TAB KIRI ---
-  const [tabAktif, setTabAktif] = useState("akun");
+  const [orders, setOrders] = useState([]);
+  const [memuatOrders, setMemuatOrders] = useState(true);
 
-  // --- STATE FORM TAMBAH AKUN ---
+  const [tabAktif, setTabAktif] = useState("riwayat");
+
   const [nama, setNama] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("driver");
   const [loadingAkun, setLoadingAkun] = useState(false);
 
-  // --- STATE FORM INPUT MANUAL ---
   const [manualDriver, setManualDriver] = useState("");
   const [manualKerani, setManualKerani] = useState("");
   const [manualTanggal, setManualTanggal] = useState("");
@@ -29,33 +29,131 @@ export default function DasborManajer() {
   const [manualTonase, setManualTonase] = useState("");
   const [loadingManual, setLoadingManual] = useState(false);
 
-  // --- STATE FILTER & PENCARIAN ---
   const [kataKunci, setKataKunci] = useState("");
   const [filterPosisi, setFilterPosisi] = useState("semua");
 
+  const [bulanTutup, setBulanTutup] = useState(new Date().getMonth() + 1);
+  const [tahunTutup, setTahunTutup] = useState(new Date().getFullYear());
+  const [teksKonfirmasi, setTeksKonfirmasi] = useState("");
+  const [loadingTutupBuku, setLoadingTutupBuku] = useState(false);
+
   const ambilDataKaryawan = async () => {
     setMemuatData(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("profiles")
-      .select("id, nama_lengkap, role")
-      .order("role", { ascending: true })
-      .order("nama_lengkap", { ascending: true });
-
-    if (!error && data) {
-      setKaryawan(data);
-    }
+      .select("*")
+      .order("nama_lengkap");
+    if (data) setKaryawan(data);
     setMemuatData(false);
+  };
+
+  const ambilDataOrders = async () => {
+    setMemuatOrders(true);
+    const { data, error } = await supabase
+      .from("orders")
+      .select(
+        `
+        id, 
+        completed_at, 
+        afdeling, 
+        blok, 
+        estimasi_tonase,
+        tonase_aktual, 
+        status,
+        nab_barcode,
+        keterangan,
+        driver:profiles!driver_id(nama_lengkap),
+        kerani:profiles!kerani_id(nama_lengkap)
+      `,
+      )
+      .order("completed_at", { ascending: false });
+
+    if (!error && data) setOrders(data);
+    setMemuatOrders(false);
   };
 
   useEffect(() => {
     ambilDataKaryawan();
+    ambilDataOrders();
   }, []);
 
-  // --- HANDLER TAMBAH AKUN ---
+  const unduhCSV = () => {
+    if (orders.length === 0) {
+      alert("Tidak ada data untuk diunduh.");
+      return;
+    }
+
+    let csvContent =
+      "Tanggal,Supir,Kerani,Afdeling,Blok,Barcode NAB,Est. Tonase,Tonase Aktual,Status,Keterangan\n";
+
+    orders.forEach((row) => {
+      const tanggal = row.completed_at
+        ? new Date(row.completed_at).toLocaleDateString("id-ID")
+        : "-";
+      const namaSupir = row.driver ? row.driver.nama_lengkap : "-";
+      const namaKerani = row.kerani ? row.kerani.nama_lengkap : "-";
+      const nab = row.nab_barcode || "-";
+      const est = row.estimasi_tonase || "0";
+      const akt = row.tonase_aktual || "0";
+      const ket = row.keterangan ? row.keterangan.replace(/,/g, " ") : "-";
+
+      csvContent += `${tanggal},${namaSupir},${namaKerani},${row.afdeling},${row.blok},${nab},${est},${akt},${row.status},${ket}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `Laporan_Ritase_${new Date().toLocaleDateString("id-ID")}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleTutupBuku = async (e) => {
+    e.preventDefault();
+    if (teksKonfirmasi !== "HAPUS") {
+      alert("Konfirmasi tidak valid. Harap ketik 'HAPUS' dengan huruf besar.");
+      return;
+    }
+
+    const yakin = window.confirm(
+      `Peringatan!\n\nData ritase dan foto pada periode ${bulanTutup}/${tahunTutup} akan dihapus secara permanen. Pastikan Anda sudah mengunduh laporan CSV.\n\nLanjutkan proses penghapusan?`,
+    );
+    if (!yakin) return;
+
+    setLoadingTutupBuku(true);
+    try {
+      const res = await fetch("/api/cleaning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bulan: parseInt(bulanTutup),
+          tahun: parseInt(tahunTutup),
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        alert(data.message);
+        setTeksKonfirmasi("");
+        ambilDataOrders();
+      } else {
+        alert(`Gagal memproses data: ${data.error}`);
+      }
+    } catch (err) {
+      alert("Terjadi kendala saat menghubungi server.");
+    } finally {
+      setLoadingTutupBuku(false);
+    }
+  };
+
   const handleDaftar = async (e) => {
     e.preventDefault();
     setLoadingAkun(true);
-
     const emailAman = nama.toLowerCase().replace(/[^a-z0-9]/g, "");
     const generatedEmail = `${emailAman}@kebun.com`;
 
@@ -70,28 +168,25 @@ export default function DasborManajer() {
           role,
         }),
       });
-
       const data = await res.json();
-
       if (data.success) {
-        alert(`SUKSES!\n\nNama: ${nama}\nPassword: ${password}`);
+        alert(`Pendaftaran berhasil.\nNama: ${nama}\nKata Sandi: ${password}`);
         setNama("");
         setPassword("");
         ambilDataKaryawan();
       } else {
-        alert(`Gagal: ${data.error}`);
+        alert(`Pendaftaran gagal: ${data.error}`);
       }
     } catch (err) {
-      alert("Gagal terhubung ke server.");
+      alert("Terjadi kendala jaringan saat mendaftarkan akun.");
     } finally {
       setLoadingAkun(false);
     }
   };
 
-  // --- HANDLER HAPUS AKUN ---
   const handleHapus = async (id, namaKaryawan) => {
     const konfirmasi = window.confirm(
-      `PERINGATAN!\n\nApakah Anda yakin ingin menghapus akun "${namaKaryawan}" secara permanen?`,
+      `Apakah Anda yakin ingin menghapus akun "${namaKaryawan}" secara permanen?`,
     );
     if (!konfirmasi) return;
 
@@ -101,28 +196,46 @@ export default function DasborManajer() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-
       const data = await res.json();
-
       if (data.success) {
-        alert(`Akun ${namaKaryawan} berhasil dihapus.`);
         ambilDataKaryawan();
       } else {
-        alert(`Gagal menghapus: ${data.error}`);
+        alert(`Gagal menghapus akun: ${data.error}`);
       }
     } catch (err) {
-      alert("Kesalahan jaringan saat menghapus data.");
+      alert("Terjadi kendala jaringan saat menghapus akun.");
     }
   };
 
-  // --- HANDLER INPUT MANUAL RITASE ---
+  const handleHapusOrder = async (id) => {
+    const konfirmasi = window.confirm(
+      "Apakah Anda yakin ingin menghapus data transaksi ini?",
+    );
+    if (!konfirmasi) return;
+
+    try {
+      const res = await fetch("/api/delete-order", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        ambilDataOrders();
+      } else {
+        alert(`Gagal menghapus transaksi: ${data.error}`);
+      }
+    } catch (err) {
+      alert("Terjadi kendala jaringan saat menghapus transaksi.");
+    }
+  };
+
   const handleInputManual = async (e) => {
     e.preventDefault();
     if (!manualDriver || !manualKerani || !manualTanggal) {
-      alert("Harap pilih Supir, Kerani, dan Tanggal terlebih dahulu!");
+      alert("Harap lengkapi pilihan Supir, Kerani, dan Tanggal.");
       return;
     }
-
     setLoadingManual(true);
     try {
       const res = await fetch("/api/manual-order", {
@@ -137,301 +250,424 @@ export default function DasborManajer() {
           tonase: parseFloat(manualTonase.replace(",", ".")),
         }),
       });
-
       const data = await res.json();
-
       if (data.success) {
-        alert("Data ritase susulan berhasil disinkronisasi ke sistem!");
+        alert("Data ritase manual berhasil disimpan.");
         setManualAfdeling("");
         setManualBlok("");
         setManualTonase("");
+        ambilDataOrders();
       } else {
         alert(`Gagal menyimpan data: ${data.error}`);
       }
     } catch (err) {
-      alert("Gagal terhubung ke server.");
+      alert("Terjadi kendala jaringan saat menyimpan data.");
     } finally {
       setLoadingManual(false);
     }
   };
 
-  // --- LOGIKA FILTERING ---
   const karyawanDifilter = karyawan.filter((k) => {
     const cocokNama = k.nama_lengkap
-      .toLowerCase()
+      ?.toLowerCase()
       .includes(kataKunci.toLowerCase());
     const cocokPosisi = filterPosisi === "semua" || k.role === filterPosisi;
     return cocokNama && cocokPosisi;
   });
 
-  // Pisahkan array untuk opsi dropdown Input Manual
   const daftarDriver = karyawan.filter((k) => k.role === "driver");
   const daftarKerani = karyawan.filter((k) => k.role === "kerani");
 
   return (
-    <div className="min-h-screen bg-slate-100 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* KOLOM KIRI: MULTI-TAB (TAMBAH AKUN / INPUT MANUAL) */}
-        <div className="md:col-span-1 bg-white rounded-xl shadow-lg overflow-hidden h-fit">
-          <div className="flex border-b border-slate-200">
+    <div className="min-h-screen bg-slate-100 p-4 md:p-8 font-sans text-slate-900">
+      <div className="max-w-7xl mx-auto mb-6 flex flex-col sm:flex-row justify-between items-center bg-slate-800 p-4 rounded-xl shadow gap-4">
+        <h1 className="text-2xl font-bold text-white tracking-wide">
+          <span className="text-blue-400 font-normal">Manager Center</span>
+        </h1>
+        <button
+          onClick={unduhCSV}
+          className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded shadow transition-all"
+        >
+          Unduh Laporan
+        </button>
+      </div>
+
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-1 flex flex-col gap-4">
+          <div className="bg-white rounded-xl shadow p-2 flex flex-col gap-1">
+            <button
+              onClick={() => setTabAktif("riwayat")}
+              className={`py-3 px-4 font-bold text-left rounded-lg transition-all ${tabAktif === "riwayat" ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+            >
+              Riwayat Transaksi
+            </button>
             <button
               onClick={() => setTabAktif("akun")}
-              className={`flex-1 py-3 font-bold text-sm transition-colors ${tabAktif === "akun" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              className={`py-3 px-4 font-bold text-left rounded-lg transition-all ${tabAktif === "akun" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
             >
-              Kelola Akun
+              Kelola Karyawan
             </button>
             <button
               onClick={() => setTabAktif("manual")}
-              className={`flex-1 py-3 font-bold text-sm transition-colors ${tabAktif === "manual" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              className={`py-3 px-4 font-bold text-left rounded-lg transition-all ${tabAktif === "manual" ? "bg-emerald-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
             >
               Input Susulan
             </button>
+            <button
+              onClick={() => setTabAktif("tutupbuku")}
+              className={`py-3 px-4 font-bold text-left rounded-lg transition-all ${tabAktif === "tutupbuku" ? "bg-red-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+            >
+              Hapus Data Lama
+            </button>
           </div>
 
-          {/* KONTEN TAB: TAMBAH AKUN */}
-          {tabAktif === "akun" && (
-            <form onSubmit={handleDaftar} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Nama
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={nama}
-                  onChange={(e) => setNama(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Kata Sandi
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Posisi
-                </label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+          <div className="bg-white rounded-xl shadow overflow-hidden">
+            {tabAktif === "akun" && (
+              <form onSubmit={handleDaftar} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
+                    Nama Karyawan
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={nama}
+                    onChange={(e) => setNama(e.target.value)}
+                    className="w-full border p-2 rounded bg-white text-slate-900 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
+                    Kata Sandi
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full border p-2 rounded bg-white text-slate-900 font-mono focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
+                    Posisi
+                  </label>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    className="w-full border p-2 rounded bg-white text-slate-900 focus:outline-none"
+                  >
+                    <option value="driver">Driver</option>
+                    <option value="kerani">Kerani</option>
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  disabled={loadingAkun}
+                  className={`w-full font-bold py-3 rounded text-white ${loadingAkun ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-700"}`}
                 >
+                  Daftarkan Akun
+                </button>
+              </form>
+            )}
+
+            {tabAktif === "manual" && (
+              <form onSubmit={handleInputManual} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Supir
+                  </label>
+                  <select
+                    required
+                    value={manualDriver}
+                    onChange={(e) => setManualDriver(e.target.value)}
+                    className="w-full border p-2 rounded bg-white text-slate-900 focus:outline-none"
+                  >
+                    <option value="">Pilih Supir</option>
+                    {daftarDriver.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.nama_lengkap}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Kerani
+                  </label>
+                  <select
+                    required
+                    value={manualKerani}
+                    onChange={(e) => setManualKerani(e.target.value)}
+                    className="w-full border p-2 rounded bg-white text-slate-900 focus:outline-none"
+                  >
+                    <option value="">Pilih Kerani</option>
+                    {daftarKerani.map((k) => (
+                      <option key={k.id} value={k.id}>
+                        {k.nama_lengkap}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tanggal
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={manualTanggal}
+                    onChange={(e) => setManualTanggal(e.target.value)}
+                    className="w-full border p-2 rounded bg-white text-slate-900 focus:outline-none"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Afdeling
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={manualAfdeling}
+                      onChange={(e) => setManualAfdeling(e.target.value)}
+                      className="w-full border p-2 rounded bg-white text-slate-900 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Blok
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={manualBlok}
+                      onChange={(e) => setManualBlok(e.target.value)}
+                      className="w-full border p-2 rounded bg-white text-slate-900 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tonase Aktual
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={manualTonase}
+                    onChange={(e) => setManualTonase(e.target.value)}
+                    className="w-full border p-2 rounded bg-white text-slate-900 focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loadingManual}
+                  className={`w-full font-bold py-3 rounded text-white mt-2 ${loadingManual ? "bg-slate-400" : "bg-emerald-600 hover:bg-emerald-700"}`}
+                >
+                  Simpan
+                </button>
+              </form>
+            )}
+
+            {tabAktif === "tutupbuku" && (
+              <form onSubmit={handleTutupBuku} className="p-6 space-y-4">
+                <div className="bg-red-50 text-red-800 text-xs p-3 rounded mb-2 border border-red-200">
+                  Perhatian: Proses ini akan menghapus data ritase dan lampiran
+                  foto dari server secara permanen.
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Bulan
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="12"
+                      value={bulanTutup}
+                      onChange={(e) => setBulanTutup(e.target.value)}
+                      className="w-full border p-2 rounded bg-white text-slate-900 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Tahun
+                    </label>
+                    <input
+                      type="number"
+                      min="2024"
+                      value={tahunTutup}
+                      onChange={(e) => setTahunTutup(e.target.value)}
+                      className="w-full border p-2 rounded bg-white text-slate-900 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-red-600 mb-1">
+                    Ketik konfirmasi: HAPUS
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={teksKonfirmasi}
+                    onChange={(e) => setTeksKonfirmasi(e.target.value)}
+                    className="w-full border border-red-300 bg-red-50 text-red-900 font-mono p-2 rounded focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loadingTutupBuku}
+                  className={`w-full font-bold py-3 rounded text-white mt-2 ${loadingTutupBuku ? "bg-slate-400" : "bg-red-600 hover:bg-red-700"}`}
+                >
+                  Proses Tutup Buku
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+
+        <div className="lg:col-span-3 bg-white rounded-xl shadow overflow-hidden flex flex-col h-[80vh]">
+          {tabAktif === "riwayat" ? (
+            <>
+              <div className="bg-slate-50 p-4 border-b flex justify-between items-center shrink-0">
+                <h2 className="font-bold text-slate-800">Riwayat Transaksi</h2>
+                <button
+                  onClick={ambilDataOrders}
+                  className="text-sm border bg-white text-slate-700 px-3 py-1 rounded hover:bg-slate-100 shadow-sm"
+                >
+                  Muat Ulang
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1 bg-white">
+                {memuatOrders ? (
+                  <p className="p-6 text-center text-slate-500">
+                    Memuat data...
+                  </p>
+                ) : (
+                  <table className="w-full text-left border-collapse text-sm bg-white text-slate-900">
+                    <thead className="sticky top-0 bg-slate-100 z-10 shadow-sm border-b">
+                      <tr className="text-slate-700">
+                        <th className="p-3 font-semibold">Tanggal</th>
+                        <th className="p-3 font-semibold">Supir</th>
+                        <th className="p-3 font-semibold">Lokasi</th>
+                        <th className="p-3 font-semibold">Barcode NAB</th>
+                        <th className="p-3 font-semibold text-right">Tonase</th>
+                        <th className="p-3 font-semibold">Status</th>
+                        <th className="p-3 font-semibold text-right">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orders.map((o) => (
+                        <tr
+                          key={o.id}
+                          className="border-b hover:bg-slate-50 text-slate-900"
+                        >
+                          <td className="p-3 text-slate-900">
+                            {o.completed_at
+                              ? new Date(o.completed_at).toLocaleDateString(
+                                  "id-ID",
+                                )
+                              : "-"}
+                          </td>
+                          <td className="p-3 font-medium text-blue-700">
+                            {o.driver?.nama_lengkap || "-"}
+                          </td>
+                          <td className="p-3 text-slate-900">
+                            {o.afdeling}/{o.blok}
+                          </td>
+                          <td className="p-3 font-mono text-xs text-slate-800">
+                            {o.nab_barcode || "-"}
+                          </td>
+                          <td className="p-3 text-right font-bold text-slate-900">
+                            {o.tonase_aktual || o.estimasi_tonase || "0"} T
+                          </td>
+                          <td className="p-3">
+                            <span
+                              className={`px-2 py-1 text-xs font-semibold rounded-full ${o.keterangan ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}
+                            >
+                              {o.keterangan ? "Manual" : o.status}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right">
+                            <button
+                              onClick={() => handleHapusOrder(o.id)}
+                              className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold transition-colors"
+                            >
+                              Hapus
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </>
+          ) : tabAktif === "akun" ? (
+            <>
+              <div className="p-4 bg-slate-50 border-b flex gap-3 shrink-0">
+                <input
+                  type="text"
+                  placeholder="Cari nama karyawan..."
+                  value={kataKunci}
+                  onChange={(e) => setKataKunci(e.target.value)}
+                  className="flex-1 border p-2 rounded bg-white text-slate-900 focus:outline-none"
+                />
+                <select
+                  value={filterPosisi}
+                  onChange={(e) => setFilterPosisi(e.target.value)}
+                  className="border p-2 rounded w-32 bg-white text-slate-900 focus:outline-none"
+                >
+                  <option value="semua">Semua</option>
                   <option value="driver">Driver</option>
                   <option value="kerani">Kerani</option>
                 </select>
               </div>
-              <button
-                type="submit"
-                disabled={loadingAkun}
-                className={`w-full font-bold py-3 rounded-lg text-white ${loadingAkun ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-700"}`}
-              >
-                {loadingAkun ? "Memproses..." : "Daftarkan"}
-              </button>
-            </form>
-          )}
-
-          {/* KONTEN TAB: INPUT MANUAL RITASE */}
-          {tabAktif === "manual" && (
-            <form onSubmit={handleInputManual} className="p-6 space-y-4">
-              <div className="bg-amber-50 text-amber-800 text-xs p-3 rounded-lg mb-2 border border-amber-200">
-                Gunakan form ini <b>hanya</b> untuk mendaftarkan ritase yang
-                terlewat karena masalah aplikasi/HP di lapangan.
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Nama Supir
-                </label>
-                <select
-                  required
-                  value={manualDriver}
-                  onChange={(e) => setManualDriver(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
-                >
-                  <option value="">Pilih Supir</option>
-                  {daftarDriver.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.nama_lengkap}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Nama Kerani
-                </label>
-                <select
-                  required
-                  value={manualKerani}
-                  onChange={(e) => setManualKerani(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
-                >
-                  <option value="">Pilih Kerani</option>
-                  {daftarKerani.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.nama_lengkap}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Tanggal Ritase
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={manualTanggal}
-                  onChange={(e) => setManualTanggal(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Afdeling
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: OA"
-                    value={manualAfdeling}
-                    onChange={(e) => setManualAfdeling(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Blok
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: 12"
-                    value={manualBlok}
-                    onChange={(e) => setManualBlok(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Tonase Aktual (Ton)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="Contoh: 5.5"
-                  value={manualTonase}
-                  onChange={(e) => setManualTonase(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loadingManual}
-                className={`w-full font-bold py-3 rounded-lg text-white mt-2 ${loadingManual ? "bg-slate-400" : "bg-emerald-600 hover:bg-emerald-700"}`}
-              >
-                {loadingManual ? "Menyimpan..." : "Simpan Data Susulan"}
-              </button>
-            </form>
-          )}
-        </div>
-
-        {/* KOLOM KANAN: DATA KARYAWAN (TIDAK ADA PERUBAHAN) */}
-        <div className="md:col-span-2 bg-white rounded-xl shadow-lg overflow-hidden flex flex-col h-[85vh]">
-          <div className="bg-slate-800 p-6 flex justify-between items-center shrink-0">
-            <h1 className="text-xl font-bold text-white">Data Karyawan</h1>
-            <button
-              onClick={ambilDataKaryawan}
-              className="text-sm bg-slate-700 text-white px-3 py-1 rounded hover:bg-slate-600"
-            >
-              Muat Ulang
-            </button>
-          </div>
-
-          <div className="p-4 bg-slate-50 border-b flex flex-col sm:flex-row gap-3 shrink-0">
-            <input
-              type="text"
-              placeholder="Cari nama karyawan..."
-              value={kataKunci}
-              onChange={(e) => setKataKunci(e.target.value)}
-              className="flex-1 border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-            <select
-              value={filterPosisi}
-              onChange={(e) => setFilterPosisi(e.target.value)}
-              className="border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none sm:w-40"
-            >
-              <option value="semua">Semua</option>
-              <option value="driver">Driver</option>
-              <option value="kerani">Kerani</option>
-            </select>
-          </div>
-
-          <div className="p-0 overflow-y-auto flex-1">
-            {memuatData ? (
-              <p className="p-6 text-center text-slate-500">
-                Menarik data dari server...
-              </p>
-            ) : karyawanDifilter.length === 0 ? (
-              <p className="p-6 text-center text-slate-500 font-medium">
-                {karyawan.length === 0
-                  ? "Belum ada karyawan terdaftar."
-                  : "Karyawan tidak ditemukan."}
-              </p>
-            ) : (
-              <table className="w-full text-left border-collapse">
-                <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
-                  <tr className="text-slate-500 border-b">
-                    <th className="p-4 font-semibold text-sm">Nama Pengguna</th>
-                    <th className="p-4 font-semibold text-sm">Posisi</th>
-                    <th className="p-4 font-semibold text-sm text-right">
-                      Tindakan
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {karyawanDifilter.map((k) => (
-                    <tr key={k.id} className="border-b hover:bg-slate-50">
-                      <td className="p-4 font-medium text-slate-800">
-                        {k.nama_lengkap}
-                      </td>
-                      <td className="p-4">
-                        <span
-                          className={`px-2 py-1 text-xs font-bold rounded-full ${k.role === "driver" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}
-                        >
-                          {k.role.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="p-4 text-right">
-                        <button
-                          onClick={() => handleHapus(k.id, k.nama_lengkap)}
-                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded shadow text-sm font-semibold transition-colors"
-                        >
-                          Hapus
-                        </button>
-                      </td>
+              <div className="overflow-y-auto flex-1 bg-white">
+                <table className="w-full text-left border-collapse text-sm bg-white text-slate-900">
+                  <thead className="sticky top-0 bg-slate-100 shadow-sm border-b">
+                    <tr className="text-slate-600">
+                      <th className="p-3">Nama</th>
+                      <th className="p-3">Posisi</th>
+                      <th className="p-3 text-right">Aksi</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                  </thead>
+                  <tbody>
+                    {karyawanDifilter.map((k) => (
+                      <tr
+                        key={k.id}
+                        className="border-b hover:bg-slate-50 text-slate-900"
+                      >
+                        <td className="p-3 font-medium text-slate-800">
+                          {k.nama_lengkap}
+                        </td>
+                        <td className="p-3">
+                          <span
+                            className={`px-2 py-1 text-xs font-bold rounded-full ${k.role === "driver" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}
+                          >
+                            {k.role.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <button
+                            onClick={() => handleHapus(k.id, k.nama_lengkap)}
+                            className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-colors"
+                          >
+                            Hapus
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-full text-slate-500 p-6 text-center bg-white">
+              Pilih menu di sebelah kiri untuk mengelola sistem.
+            </div>
+          )}
         </div>
       </div>
     </div>
