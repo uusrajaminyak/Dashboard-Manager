@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -266,6 +267,115 @@ export default function DasborManajer() {
       setLoadingManual(false);
     }
   };
+  const handleUploadExcel = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setLoadingManual(true);
+    const reader = new FileReader();
+
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const workbook = XLSX.read(bstr, { type: "binary" });
+
+        // <-- PERBAIKAN 2: Perbaikan typo variabel worksheet
+        const wsname = workbook.SheetNames[0];
+        const ws = workbook.Sheets[wsname];
+        const dataExcel = XLSX.utils.sheet_to_json(ws);
+
+        if (dataExcel.length === 0) {
+          alert("File Excel kosong.");
+          setLoadingManual(false);
+          return;
+        }
+
+        let berhasil = 0;
+        let gagal = 0;
+        let pesanGagal = [];
+
+        for (const [index, baris] of dataExcel.entries()) {
+          const barisKe = index + 2;
+
+          if (
+            !baris["Tanggal"] ||
+            !baris["Nama Supir"] ||
+            !baris["Nama Kerani"] ||
+            !baris["Afdeling"] ||
+            !baris["Blok"] ||
+            !baris["Tonase Aktual"]
+          ) {
+            gagal++;
+            pesanGagal.push(`Baris ${barisKe}: Data tidak lengkap`);
+            continue;
+          }
+
+          const supirTarget = karyawan.find(
+            (k) =>
+              k.role === "driver" &&
+              k.nama_lengkap.toLowerCase() ===
+                baris["Nama Supir"].toLowerCase(),
+          );
+          const keraniTarget = karyawan.find(
+            (k) =>
+              k.role === "kerani" &&
+              k.nama_lengkap.toLowerCase() ===
+                baris["Nama Kerani"].toLowerCase(),
+          );
+
+          if (!supirTarget || !keraniTarget) {
+            gagal++;
+            pesanGagal.push(
+              `Baris ${barisKe}: Supir atau Kerani tidak ditemukan`,
+            );
+            continue;
+          }
+
+          const tanggalInput = new Date(baris["Tanggal"]).toISOString();
+          const tonaseKilo = parseFloat(
+            baris["Tonase Aktual"].toString().replace(",", "."),
+          );
+          const tonaseAktualFinal =
+            tonaseKilo > 100 ? tonaseKilo / 1000 : tonaseKilo;
+
+          const payloadOrder = {
+            driver_id: supirTarget.id,
+            kerani_id: keraniTarget.id,
+            afdeling: baris["Afdeling"].toString().toUpperCase(),
+            blok: baris["Blok"].toString().toUpperCase(),
+            estimasi_tonase: tonaseAktualFinal,
+            tonase_aktual: tonaseAktualFinal,
+            status: "completed",
+            nab_barcode: `EXCEL-${Math.floor(Math.random() * 900000) + 100000}`,
+            keterangan: "Input Massal Excel",
+            created_at: tanggalInput,
+            started_at: tanggalInput,
+            completed_at: tanggalInput,
+          };
+
+          const { error } = await supabase.from("orders").insert(payloadOrder);
+          if (error) {
+            gagal++;
+            pesanGagal.push(
+              `Baris ${barisKe}: Gagal menyimpan (${error.message})`,
+            );
+          } else {
+            berhasil++;
+          }
+        }
+        alert(
+          `Proses selesai.\nBerhasil: ${berhasil}\nGagal: ${gagal}\n\n${pesanGagal.join("\n")}`,
+        );
+        ambilDataOrders();
+      } catch (err) {
+        alert("Terjadi kesalahan saat membaca file Excel.");
+      } finally {
+        setLoadingManual(false);
+        e.target.value = "";
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
 
   const karyawanDifilter = karyawan.filter((k) => {
     const cocokNama = k.nama_lengkap
@@ -467,6 +577,41 @@ export default function DasborManajer() {
                 >
                   Simpan
                 </button>
+                <div className="my-6 border-t border-slate-200 pt-6">
+                  <p className="text-sm font-bold text-slate-800 mb-2">
+                    Atau Upload File Excel
+                  </p>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Format Kolom: Tanggal | Nama Supir | Nama Kerani | Afdeling
+                    | Blok | Tonase Aktual
+                  </p>
+
+                  <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-6 hover:bg-slate-50 transition-colors text-center">
+                    <input
+                      type="file"
+                      accept=".xlsx, .xls"
+                      onChange={handleUploadExcel}
+                      disabled={loadingManual}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <div className="text-slate-600">
+                      {loadingManual ? (
+                        <span className="font-semibold text-blue-600">
+                          Memproses Excel... Mohon tunggu.
+                        </span>
+                      ) : (
+                        <>
+                          <span className="block font-semibold">
+                            Klik atau Seret file Excel ke sini
+                          </span>
+                          <span className="text-xs mt-1 block">
+                            Format yang didukung: .xlsx
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </form>
             )}
 
