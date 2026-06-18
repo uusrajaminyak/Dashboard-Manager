@@ -303,7 +303,8 @@ export default function DasborManajer() {
             !baris["Nama Kerani"] ||
             !baris["Afdeling"] ||
             !baris["Blok"] ||
-            !baris["Tonase Aktual"]
+            !baris["Tonase Aktual"] ||
+            !baris["NAB"]
           ) {
             gagal++;
             pesanGagal.push(`Baris ${barisKe}: Data tidak lengkap`);
@@ -346,7 +347,7 @@ export default function DasborManajer() {
             estimasi_tonase: tonaseAktualFinal,
             tonase_aktual: tonaseAktualFinal,
             status: "completed",
-            nab_barcode: `EXCEL-${Math.floor(Math.random() * 900000) + 100000}`,
+            nab_barcode: baris["NAB"].toString(),
             keterangan: "Input Massal Excel",
             created_at: tanggalInput,
             started_at: tanggalInput,
@@ -583,7 +584,7 @@ export default function DasborManajer() {
                   </p>
                   <p className="text-xs text-slate-500 mb-3">
                     Format Kolom: Tanggal | Nama Supir | Nama Kerani | Afdeling
-                    | Blok | Tonase Aktual
+                    | Blok | Tonase Aktual | NAB
                   </p>
 
                   <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-6 hover:bg-slate-50 transition-colors text-center">
@@ -775,6 +776,7 @@ export default function DasborManajer() {
                     <tr className="text-slate-600">
                       <th className="p-3">Nama</th>
                       <th className="p-3">Posisi</th>
+                      <th className="p-3">Kata Sandi</th>
                       <th className="p-3 text-right">Aksi</th>
                     </tr>
                   </thead>
@@ -793,6 +795,9 @@ export default function DasborManajer() {
                           >
                             {k.role.toUpperCase()}
                           </span>
+                        </td>
+                        <td className="p-3">
+                          {k.kata_sandi}
                         </td>
                         <td className="p-3 text-right">
                           <button

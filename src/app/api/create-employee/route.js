@@ -29,6 +29,7 @@ export async function POST(request) {
           role: role,
           is_online: false,
           estimasi_gaji_bulan_ini: 0,
+          kata_sandi: password,
         },
       ]);
 
