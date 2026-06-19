@@ -43,6 +43,7 @@ export default function DasborManajer() {
     const { data } = await supabase
       .from("profiles")
       .select("*")
+      .neq("role", "nonaktif")
       .order("nama_lengkap");
     if (data) setKaryawan(data);
     setMemuatData(false);

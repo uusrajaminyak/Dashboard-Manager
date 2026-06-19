@@ -18,16 +18,26 @@ export async function DELETE(request) {
       );
     }
 
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(id);
+    const { error: banError } = await supabaseAdmin.auth.admin.updateUserById(
+      id,
+      { ban_duration: "876000h" },
+    );
 
-    if (error) throw error;
+    if (banError) throw banError;
+
+    const { error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .update({ is_online: false, role: "nonaktif" })
+      .eq("id", id);
+
+    if (profileError) throw profileError;
 
     return NextResponse.json({
       success: true,
-      message: "Akun berhasil dihapus",
+      message: "Akun berhasil dinonaktifkan permanen",
     });
   } catch (error) {
-    console.error("Kesalahan hapus:", error.message);
+    console.error("Kesalahan penonaktifan:", error.message);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 400 },
