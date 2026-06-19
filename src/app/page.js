@@ -240,6 +240,8 @@ export default function DasborManajer() {
     }
     setLoadingManual(true);
     try {
+      const tonaseKilo = parseFloat(manualTonase.replace(",", "."));
+      const tonaseTon = tonaseKilo / 1000;
       const res = await fetch("/api/manual-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -249,9 +251,10 @@ export default function DasborManajer() {
           tanggal: manualTanggal,
           afdeling: manualAfdeling.toUpperCase(),
           blok: manualBlok.toUpperCase(),
-          tonase: parseFloat(manualTonase.replace(",", ".")),
+          tonase: tonaseTon,
         }),
       });
+
       const data = await res.json();
       if (data.success) {
         alert("Data ritase manual berhasil disimpan.");
@@ -571,7 +574,7 @@ export default function DasborManajer() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Tonase Aktual
+                    Muatan (Kg)
                   </label>
                   <input
                     type="number"
