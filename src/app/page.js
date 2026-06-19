@@ -277,7 +277,7 @@ export default function DasborManajer() {
     reader.onload = async (evt) => {
       try {
         const bstr = evt.target.result;
-        const workbook = XLSX.read(bstr, { type: "binary" });
+        const workbook = XLSX.read(bstr, { type: "binary", cellDates: true });
 
         // <-- PERBAIKAN 2: Perbaikan typo variabel worksheet
         const wsname = workbook.SheetNames[0];
@@ -332,7 +332,17 @@ export default function DasborManajer() {
             continue;
           }
 
-          const tanggalInput = new Date(baris["Tanggal"]).toISOString();
+          let tanggalInput;
+          if (baris["Tanggal"] instanceof Date) {
+            tanggalInput = baris["Tanggal"].toISOString();
+          } else if (typeof baris["Tanggal"] === "number") {
+            tanggalInput = new Date(
+              (baris["Tanggal"] - 25569) * 86400 * 1000,
+            ).toISOString();
+          } else {
+            tanggalInput = new Date(baris["Tanggal"]).toISOString();
+          }
+
           const tonaseKilo = parseFloat(
             baris["Tonase Aktual"].toString().replace(",", "."),
           );
@@ -796,9 +806,7 @@ export default function DasborManajer() {
                             {k.role.toUpperCase()}
                           </span>
                         </td>
-                        <td className="p-3">
-                          {k.kata_sandi}
-                        </td>
+                        <td className="p-3">{k.kata_sandi}</td>
                         <td className="p-3 text-right">
                           <button
                             onClick={() => handleHapus(k.id, k.nama_lengkap)}
